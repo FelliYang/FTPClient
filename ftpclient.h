@@ -31,6 +31,8 @@ private slots:
     void updateDownloadProcess(int process);
     void setProcessBarVIsibility(bool);
     void updateRemotePath(QString);
+    void clientThreadRunning();
+    void clientThreadStop();
 
     void on_connectButton_clicked();
     void on_downButton_clicked();

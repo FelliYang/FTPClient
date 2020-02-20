@@ -14,6 +14,7 @@ ClientThread::~ClientThread() {
 
 void ClientThread::run() {
     curClient->startTask(); //开始任务
+    emit emitRunning();
     switch (task) {
     case TConnect:
         if(!curClient->connectServer())
@@ -57,6 +58,7 @@ void ClientThread::run() {
 }
 
 void ClientThread::stop() {
+    emit emitStop();
     std::cout<<"subthread finished"<<std::endl;
     curClient->stopCurrentTask();
     isInterruptionRequested();  //关闭线程

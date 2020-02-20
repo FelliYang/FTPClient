@@ -27,6 +27,8 @@ signals:
     void emitInfo(QString);
     void emitSuccess();
     void emitClearList();
+    void emitRunning();
+    void emitStop();
 
 };
 

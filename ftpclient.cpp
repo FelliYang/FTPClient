@@ -11,10 +11,13 @@ ftpClient::ftpClient(QWidget *parent) :
     connect(clientThread, SIGNAL(emitSuccess()), this, SLOT(recvSuccess()));
     connect(clientThread, SIGNAL(finished()), clientThread, SLOT(stop()));
     connect(clientThread, SIGNAL(emitClearList()), this, SLOT(recvClearList()));
+    connect(clientThread,SIGNAL(emitRunning()),this,SLOT(clientThreadRunning()));
+    connect(clientThread,SIGNAL(emitStop()),this,SLOT(clientThreadStop()));
     connect(clientThread->curClient->infoThread, SIGNAL(emitInfo(QString)), this, SLOT(recvInfo(QString)));
     connect(clientThread->curClient->infoThread,SIGNAL(emitDownloadProcess(int)),this,SLOT(updateDownloadProcess(int)));
     connect(clientThread->curClient->infoThread,SIGNAL(emitSetDownloadProcessVisibility(bool)),this,SLOT(setProcessBarVIsibility(bool)));
     connect(clientThread->curClient->infoThread,SIGNAL(emitUpdateRemotePath(QString)),this,SLOT(updateRemotePath(QString)));
+
     //若执行此行，run结束后clientThread会调用析构
     //connect(clientThread, SIGNAL(finished()), clientThread, SLOT(deleteLater()));
 
@@ -26,6 +29,9 @@ ftpClient::ftpClient(QWidget *parent) :
     ui->remoteFileTree->header()->resizeSection(3,100);
     //设置进度条
     setProcessBarVIsibility(false);
+    //设置状态栏
+    ui->status->setText("ready");
+    ui->status->setVisible(false);
 }
 
 ftpClient::~ftpClient()
@@ -50,12 +56,12 @@ void ftpClient::on_connectButton_clicked()
             clientThread->task = TDisconnect;
             clientThread->start();
             connected = false;
-            ui->connectButton->setText("Connect");
+            ui->connectButton->setText("连接");
         }
     }else{//线程正在运行中 正在上传或者下载
         clientThread->curClient->stopCurrentTask();
         connected = false;
-        ui->connectButton->setText("Connect");
+        ui->connectButton->setText("连接");
         ui->downloadProgress->setVisible(false);
     }
 }
@@ -72,24 +78,175 @@ void ftpClient::setProcessBarVIsibility(bool b){
 }
 void ftpClient::on_downButton_clicked()
 {
-    QTreeWidgetItem* curItem = ui->remoteFileTree->currentItem();
-    QString downName;
-    if(curItem)
-        downName = curItem->text(3); //获取文件名，只有当被选中item的时候下载才会有效
-    else
-        return;
-    //获取路径 可以优化
-    QString saveDir = QFileDialog::getExistingDirectory(this, "Choose save path");
-    if(!clientThread->isRunning()) {
-    clientThread->task = TDown;
-    clientThread->arglist[0] = downName.toStdString();
-    clientThread->arglist[1] = saveDir.toStdString();
-    ui->downloadProgress->setValue(0);  //下载进度初始化为0
-    setProcessBarVIsibility(false); //默认情况不显示进度条
-    clientThread->start();
+    if(connected) {
+        if(!clientThread->isRunning()){
+            QTreeWidgetItem* curItem = ui->remoteFileTree->currentItem();
+            QString downName;
+            if(curItem)
+                downName = curItem->text(3); //获取文件名，只有当被选中item的时候下载才会有效
+            else{
+                recvInfo("please clicked the file you want to downloaded first!\n");
+                return;
+            }
+            if(curItem->text(0)=="d"){
+                recvInfo("sorry, cannot download a dictory, select a file insteadly!\n");
+                return;
+            }
+            QString saveDir = QFileDialog::getExistingDirectory(this, "Choose save path","C:/users/xuziyang/desktop");
+            if(saveDir == NULL || saveDir.isEmpty()){
+                recvInfo("you don't select the dictory which target file will be download in!\n");
+                return;
+            }else {
+                clientThread->task = TDown;
+                clientThread->arglist[0] = downName.toStdString();
+                clientThread->arglist[1] = saveDir.toStdString();
+                ui->downloadProgress->setValue(0);  //下载进度初始化为0
+                setProcessBarVIsibility(false); //默认情况不显示进度条
+                clientThread->start();
+            }
+        }else{
+            recvInfo("some work are running! wait please.\n");
+        }
+    }else {
+        //提示没有connect
+        recvInfo("please connect first!\n");
+    }
+}
+void ftpClient::on_upButton_clicked()
+{
+    if(connected){
+        if(!clientThread->isRunning()){
+            std::string localFile;
+            localFile = QFileDialog::getOpenFileName(this, "Choose the file to upload","C:/users/xuziyang/desktop").toStdString();
+            if(localFile.empty()){
+                recvInfo("you don't select a file!\n"); return;
+            }else{
+                clientThread->task = TUp;
+                clientThread->arglist[0] = localFile;
+                ui->downloadProgress->setValue(0);  //上传进度初始化为0
+                setProcessBarVIsibility(false); //默认情况不显示进度条
+                clientThread->start();
+            }
+        }else{
+            recvInfo("some work are running! wait please.\n");
+        }
+    }else {
+        recvInfo("please connect first!\n");
     }
 }
 
+void ftpClient::on_renameButton_clicked()
+{
+    if(connected){
+        if(!clientThread->isRunning()){
+            QTreeWidgetItem* curItem = ui->remoteFileTree->currentItem();
+            QString srcName, dstName;
+            if(curItem)
+                srcName = curItem->text(3);
+            else{
+                recvInfo("please clicked the file or dictory you want to rename first!\n");
+                return;
+            }
+            if(srcName=="." || srcName==".."){
+                recvInfo("sorry, dictory . and .. cannnot be rename\n");
+                return;
+            }
+            dstName = QInputDialog::getText(this, "Please input a name", "New name of the file");
+            if(dstName.isEmpty()){
+                recvInfo("you don't give the file's new name. please try again!");
+                return;
+            }
+
+            if(dstName=="." || dstName==".."){
+                recvInfo("sorry, you cannot use . or .. as file's new name\n");
+                return;
+            }
+            clientThread->arglist[0] = srcName.toStdString();
+            clientThread->arglist[1] = dstName.toStdString();
+            clientThread->task = TRename;
+            clientThread->start();
+        }else{
+            recvInfo("some work are running! wait please.\n");
+        }
+
+    }
+    else {
+        recvInfo("please connect first!\n");
+    }
+
+}
+
+
+void ftpClient::on_deleteButton_clicked()
+{
+    if(connected){
+        if(!clientThread->isRunning()){
+            QTreeWidgetItem* curItem = ui->remoteFileTree->currentItem();
+            QString fname;
+            if(curItem)
+                fname = curItem->text(3);
+            else{
+                recvInfo("please clicked the file or dictory you want to delete first!\n");
+                return;
+            }
+            clientThread->arglist[0] = fname.toStdString();
+            if(fname=="." || fname==".."){
+                recvInfo("sorry, you cannot delete dictory . or .. !\n");
+                return;
+            }
+            if(curItem->text(0)=="d")
+                clientThread->task = TRmd;
+            else
+                clientThread->task = TDele;
+            clientThread->start();
+        }else{
+            recvInfo("some work are running! wait please.\n");
+        }
+    }
+    else {
+        recvInfo("please connect first!\n");
+    }
+}
+
+void ftpClient::on_newButton_clicked()
+{
+    if(connected){
+        if(!clientThread->isRunning()){
+            QString name;
+            name = QInputDialog::getText(this, "Please input a name.", "Name of new directory");
+            if(name.isEmpty()){
+                recvInfo("you don't give the dictory's name. please try again!");
+                return;
+            }
+            if(name=="." || name==".."){
+                recvInfo("sorry, you cannot create dictory . or .. !\n");
+                return;
+            }
+            clientThread->arglist[0] = name.toStdString();
+            clientThread->task = TMkd;
+            clientThread->start();
+        }else{
+            recvInfo("some work are running! wait please.\n");
+        }
+
+    }
+    else {
+        recvInfo("please connect first!\n");
+    }
+}
+void ftpClient::on_remoteFileTree_itemDoubleClicked(QTreeWidgetItem *item, int column)
+{
+    QString type = item->text(0);
+    if(type!="d")
+        return;
+    QString file = item->text(3);
+    if(!clientThread->isRunning()) {
+        clientThread->arglist[0] = file.toStdString();
+        clientThread->task = TCd;
+        clientThread->start();
+    }
+
+}
 void ftpClient::updateDownloadProcess(int process){
     ui->downloadProgress->setValue(process);
 }
@@ -114,11 +271,11 @@ void ftpClient::recvInfo(QString info) {
 void ftpClient::recvSuccess() {
     if(!connected) {
         connected = true;
-        ui->connectButton->setText("Disconnect");
+        ui->connectButton->setText("断开");
     }
     else {
         connected = false;
-        ui->connectButton->setText("Connect");
+        ui->connectButton->setText("连接");
     }
 }
 
@@ -126,80 +283,15 @@ void ftpClient::recvClearList() {
     ui->remoteFileTree->clear();
 }
 
-void ftpClient::on_upButton_clicked()
-{
-    std::string localFile;
-    localFile = QFileDialog::getOpenFileName(this, "Choose the file to upload").toStdString();
-    clientThread->task = TUp;
-    clientThread->arglist[0] = localFile;
-    ui->downloadProgress->setValue(0);  //上传进度初始化为0
-    setProcessBarVIsibility(false); //默认情况不显示进度条
-    clientThread->start();
+void ftpClient::clientThreadRunning(){
+    ui->status->setText("running");
+    ui->status->setVisible(true);
 }
-
-void ftpClient::on_remoteFileTree_itemDoubleClicked(QTreeWidgetItem *item, int column)
-{
-    QString type = item->text(0);
-    if(type!="d")
-        return;
-    QString file = item->text(3);
-    if(!clientThread->isRunning()) {
-        clientThread->arglist[0] = file.toStdString();
-        clientThread->task = TCd;
-        clientThread->start();
-    }
-
-}
-
-void ftpClient::on_renameButton_clicked()
-{
-    QTreeWidgetItem* curItem = ui->remoteFileTree->currentItem();
-    QString srcName, dstName;
-    if(curItem)
-        srcName = curItem->text(3);
-    else
-        return;
-    if(srcName=="." || srcName=="..")
-        return;
-    dstName = QInputDialog::getText(this, "Please input a name", "New name of the file");
-    if(dstName.isEmpty())
-        return;
-    if(dstName=="." || dstName=="..")
-        return;
-    clientThread->arglist[0] = srcName.toStdString();
-    clientThread->arglist[1] = dstName.toStdString();
-    clientThread->task = TRename;
-    clientThread->start();
+void ftpClient::clientThreadStop(){
+    ui->status->setText("ready");
+    ui->status->setVisible(true);
 }
 
 
-void ftpClient::on_deleteButton_clicked()
-{
-    QTreeWidgetItem* curItem = ui->remoteFileTree->currentItem();
-    QString fname;
-    if(curItem)
-        fname = curItem->text(3);
-    else
-        return;
-    clientThread->arglist[0] = fname.toStdString();
-    if(fname=="." || fname=="..")
-        return;
-    if(curItem->text(0)=="d")
-        clientThread->task = TRmd;
-    else
-        clientThread->task = TDele;
-    clientThread->start();
-}
 
-void ftpClient::on_newButton_clicked()
-{
-    QString name;
-    name = QInputDialog::getText(this, "Please input a name.", "Name of new directory");
-    if(name.isEmpty())
-        return;
-    if(name=="." || name=="..")
-        return;
-    clientThread->arglist[0] = name.toStdString();
-    clientThread->task = TMkd;
-    clientThread->start();
-}
+
