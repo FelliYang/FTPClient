@@ -8,6 +8,7 @@
 #include <QInputDialog>
 #include <QFileDialog>
 #include "clientthread.h"
+#include "basetitlebar.h"
 
 namespace Ui {
 class ftpClient;
@@ -47,6 +48,22 @@ private:
     ClientThread* clientThread;
     bool connected = false; //标识当前的状态
 //    QString allInfo;
+
+
+//  界面优化
+private:
+    void initTitleBar();
+    void paintEvent(QPaintEvent *event);
+    void loadStyleSheet(const QString &sheetName);
+
+private slots:
+    void onButtonMinClicked();
+    void onButtonRestoreClicked();
+    void onButtonMaxClicked();
+    void onButtonCloseClicked();
+
+protected:
+    BaseTitleBar* m_titleBar;
 };
 
 

@@ -1,3 +1,6 @@
+#include <QApplication>
+#include <QPainter>
+#include <QDesktopWidget>
 #include "ftpclient.h"
 #include "ui_ftpclient.h"
 
@@ -32,6 +35,15 @@ ftpClient::ftpClient(QWidget *parent) :
     //设置状态栏
     ui->status->setText("ready");
     ui->status->setVisible(false);
+
+
+    // FramelessWindowHint属性设置窗口去除边框;
+    // WindowMinimizeButtonHint 属性设置在窗口最小化时，点击任务栏窗口可以显示出原窗口;
+    this->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowMinimizeButtonHint);
+    // 设置窗口背景透明;
+    setAttribute(Qt::WA_TranslucentBackground);
+    // 初始化标题栏;
+    initTitleBar();
 }
 
 ftpClient::~ftpClient()
@@ -295,3 +307,87 @@ void ftpClient::clientThreadStop(){
 
 
 
+//
+//
+//  界面优化
+void ftpClient::initTitleBar()
+{
+    m_titleBar = new BaseTitleBar(this);
+    m_titleBar->move(0, 0);
+
+    m_titleBar->setBackgroundColor(5,70,85);
+    m_titleBar->setTitleIcon(":/ftp.ico");
+    m_titleBar->setTitleContent(QStringLiteral("FTP客户端"));
+    m_titleBar->setButtonType(MIN_BUTTON);
+    m_titleBar->setTitleWidth(this->width());
+
+    connect(m_titleBar, SIGNAL(signalButtonMinClicked()), this, SLOT(onButtonMinClicked()));
+    connect(m_titleBar, SIGNAL(signalButtonRestoreClicked()), this, SLOT(onButtonRestoreClicked()));
+    connect(m_titleBar, SIGNAL(signalButtonMaxClicked()), this, SLOT(onButtonMaxClicked()));
+    connect(m_titleBar, SIGNAL(signalButtonCloseClicked()), this, SLOT(onButtonCloseClicked()));
+
+}
+
+void ftpClient::paintEvent(QPaintEvent* event)
+{
+    //  Q_UNUSED(event);
+    //  QStyleOption opt;
+    //  opt.init(this);
+    //  QPainter painter(this);
+    //  style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
+
+    //设置背景色;
+    QPainter painter(this);
+    QPainterPath pathBack;
+    pathBack.setFillRule(Qt::WindingFill);
+    pathBack.addRoundedRect(QRect(0, 0, this->width(), this->height()), 3, 3);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.fillPath(pathBack, QBrush(QColor(215, 221, 228)));
+
+    return QWidget::paintEvent(event);
+}
+
+void ftpClient::loadStyleSheet(const QString &sheetName)
+{
+    QFile file(":/Resources/" + sheetName + ".css");
+    file.open(QFile::ReadOnly);
+    if (file.isOpen())
+    {
+        QString styleSheet = this->styleSheet();
+        styleSheet += QLatin1String(file.readAll());
+        this->setStyleSheet(styleSheet);
+    }
+}
+
+void ftpClient::onButtonMinClicked()
+{
+    if (Qt::Tool == (windowFlags() & Qt::Tool))
+    {
+        hide();    //设置了Qt::Tool 如果调用showMinimized()则窗口就销毁了？？？
+    }
+    else
+    {
+        showMinimized();
+    }
+}
+
+void ftpClient::onButtonRestoreClicked()
+{
+    QPoint windowPos;
+    QSize windowSize;
+    m_titleBar->getRestoreInfo(windowPos, windowSize);
+    this->setGeometry(QRect(windowPos, windowSize));
+}
+
+void ftpClient::onButtonMaxClicked()
+{
+    m_titleBar->saveRestoreInfo(this->pos(), QSize(this->width(), this->height()));
+    QRect desktopRect = QApplication::desktop()->availableGeometry();
+    QRect FactRect = QRect(desktopRect.x() - 3, desktopRect.y() - 3, desktopRect.width() + 6, desktopRect.height() + 6);
+    setGeometry(FactRect);
+}
+
+void ftpClient::onButtonCloseClicked()
+{
+    close();
+}

@@ -16,6 +16,8 @@ TEMPLATE = app
 DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
+    basetitlebar.cpp \
+    basewindow.cpp \
         main.cpp \
         ftpclient.cpp \
     client.cpp \
@@ -23,6 +25,8 @@ SOURCES += \
     infothread.cpp
 
 HEADERS += \
+    basetitlebar.h \
+    basewindow.h \
         ftpclient.h\
     client.h \
     clientthread.h \
@@ -32,3 +36,7 @@ HEADERS += \
 FORMS += \
         ftpclient.ui
 
+RESOURCES += \
+    resource.qrc
+
+RC_ICONS = ftp.ico
