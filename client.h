@@ -12,7 +12,7 @@ const int PORT = 21;
 const int BUFLEN = 1000;
 const int DATABUFLEN = 1000;
 const char* const DELIMITER = "\r\n"; //FTP命令结束符
-
+const std::string ERRORINFO = "操作错误，请确认用户拥有相应权限!";
 class Client
 {
 private:
@@ -23,7 +23,7 @@ private:
     int getRemoteFileSize(std::string fname);
     int listPwd();
     int intoPasv();
-    int recvControl(int stateCode, std::string errorInfo="0");
+    int recvControl(int stateCode, std::string errorInfo=ERRORINFO);
     int executeCmd(std::string cmd);
     void removeSpace(std::string&);
     void getDownloadedLength(std::string fileName); //获取本地已下载的文件长度 用于断点续传
@@ -52,14 +52,15 @@ public:
     int deleteDir(std::string dname);
     int rename(std::string src, std::string dst);
     int mkDir(std::string name);
-    inline void stopCurrentTask() {
-        execute = false;
-    };
-    inline bool isRuningTask(){
-        return execute;
-    }
+    /*下面三个函数用来判断客户端线程是否正在执行任务（客户端线程定义的9种任务之一）*/
     inline void startTask(){
         execute = true;
+    }
+    inline void stopCurrentTask() {
+        execute = false;
+    }
+    inline bool isRuningTask(){
+        return execute;
     }
 
     InfoThread* infoThread;

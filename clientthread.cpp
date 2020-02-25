@@ -17,7 +17,7 @@ void ClientThread::run() {
     emit emitRunning();
     switch (task) {
     case TConnect:
-        if(!curClient->connectServer())
+        if(curClient->connectServer()==0) //成功的连接了服务器
             emit emitSuccess();
         flushList();
         break;

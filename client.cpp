@@ -60,17 +60,14 @@ int Client::connectServer() {
     }
     cout<<"Control Socket connecting is success."<<endl;
     //接收返回状态信息
-    Sleep(300); //?是否多次一举
     recvControl(220);
 
     //输入用户名
     executeCmd("USER " + username);
     recvControl(331);
-
     //输入密码
     executeCmd("PASS " + password);
-    recvControl(230);
-
+    if(recvControl(230)!=0) return -1; //命令执行出错，返回-1，结束执行
     listPwd();
     return 0;
 }
@@ -92,21 +89,9 @@ int Client::disconnect() {
 int Client::changeDir(string tardir) {
     memset(buf, 0, BUFLEN);
     executeCmd("CWD "+tardir);
-    recvControl(250);
+    if(recvControl(250)!=0) return -1; //命令执行出错，返回-1，结束执行
     listPwd();
     return 0;
-}
-void Client::getDownloadedLength(string fileName){
-    downloadedFileLength = 0;
-    ifstream ifile;
-    ifile.open(fileName,ios::binary);
-    if(ifile){
-        ifile.seekg(0,ifile.end);
-        int length = ifile.tellg();
-        downloadedFileLength = length>0?length:0;
-        ifile.close();
-    }
-
 }
 
 int Client::downFile(string remoteName, string localDir){
@@ -130,7 +115,7 @@ int Client::downFile(string remoteName, string localDir){
         infoThread->updateDownloadProcess(downloadedFileLength * 100/remoteFileSize);
         infoThread->showProcessBar(); //显示下载进度
         executeCmd("RETR "+remoteName);
-        recvControl(150);
+        if(recvControl(150)!=0) return -1; //下载命令出现错误,返回-1，结束执行
         memset(databuf, 0, DATABUFLEN);
         int ret = recv(dataSocket, databuf, DATABUFLEN, 0); int count=0;
         while(ret>0) //每次从dataSocket中取出来ret个字节放到DATA缓冲里面
@@ -163,17 +148,6 @@ int Client::downFile(string remoteName, string localDir){
     }
 }
 
-int Client::getRemoteFileSize(std::string fname){
-    executeCmd("SIZE "+ fname);
-    int infolen = recv(controlSocket, buf, BUFLEN, 0); //获取命令返回结果，并存储到buf中
-    buf[infolen] = '\0';
-    if(getStateCode() != 213) {
-        //文件不存在
-        return 0;
-    }else {
-        return getFileSize(fname);
-    }
-}
 int Client::upFile(string localName) { //暂时无法断点续传 无法上传中文路径的文件
     ifstream ifile;
     string remoteName = localName.substr(localName.find_last_of("/")+1);
@@ -191,7 +165,7 @@ int Client::upFile(string localName) { //暂时无法断点续传 无法上传�
         executeCmd("TYPE I");
         recvControl(200);
         executeCmd("APPE "+remoteName);
-        recvControl(150);
+        if(recvControl(150)!=0) return -1; //上传命令出现错误,返回-1,结束执行
         ifile.seekg(remoteFileLength); //本地文件移动指针
         int count=0;
         infoThread->updateDownloadProcess(remoteFileLength * 100 / targetLength);
@@ -227,6 +201,39 @@ int Client::upFile(string localName) { //暂时无法断点续传 无法上传�
         return 0;
     }
 }
+
+
+int Client::deleteFile(string fname) {
+    executeCmd("DELE "+fname);
+    if(recvControl(250)!=0) return -1;
+    listPwd();
+    return 0;
+}
+
+int Client::deleteDir(string dname) {
+    executeCmd("RMD "+dname);
+    if(recvControl(250)!=0) return -1;
+    listPwd();
+    return 0;
+}
+
+int Client::rename(string src, string dst) {
+    executeCmd("RNFR "+src);
+    if(recvControl(350)!=0) return -1;
+    executeCmd("RNTO "+dst);
+    if(recvControl(250)!=0) return -1;
+    listPwd();
+    return 0;
+}
+
+int Client::mkDir(string name) {
+    executeCmd("MKD "+name);
+    if(recvControl(257)!=0) return -1;
+    listPwd();
+    return 0;
+}
+
+
 //private function---------------------------------------------------------
 int Client::executeCmd(string cmd) {
     cmd += "\r\n";
@@ -240,8 +247,10 @@ int Client::executeCmd(string cmd) {
 // TODO:This function needs to be modified so that
 // long information could be received.
 int Client::recvControl(int stateCode, string errorInfo) {
-    if(errorInfo.size()==1)
-        errorInfo = "state code error!";
+    //errorInfo 是有默认值的参数，在函数原型中定义
+    //某些命令服务器可能会发送两个回应 例如150 ...\r\n226 ...\r\n 这个时候，为了避免下一个recv阻塞
+    //添加了nextInfo，表示是否有第二条信息
+    //这种情况不常见，但是我在一次debug的时候，确实遇到了，是LIST -al指令的返回码
     if(nextInfo.size()==0) {
         int t;
         Sleep(50);
@@ -269,8 +278,8 @@ int Client::recvControl(int stateCode, string errorInfo) {
         infoThread->sendInfo(recvInfo); //直接把recvInfo不加处理地发送了
         if(t == stateCode)
             return 0;
-        else { //这次没办法了，是真的出错了
-            cout << errorInfo << endl;
+        else {
+            cout << "\nerror with this command! check your permission!\n" << endl;
             infoThread->sendInfo(errorInfo);
             return -1;
         }
@@ -285,12 +294,15 @@ int Client::recvControl(int stateCode, string errorInfo) {
 
 }
 
-//从返回信息中获取状态码
+/*从返回信息中获取状态码
+ *该函数必须在recv函数执行之后才能执行。
+ *因为每次recv函数会更新buf，而statecode是存储在buf中的
+ **/
 int Client::getStateCode()
 {
+
     int num=0;
     char* p = buf;
-//    cout << "notice here! "<<buf << endl;
     while(p != nullptr)
     {
         num=10*num+(*p)-'0';
@@ -303,8 +315,10 @@ int Client::getStateCode()
     return num;
 }
 
-//从返回信息“227 Entering Passive Mode (182,18,8,37,10,25).”中
-//获取数据端口
+/*从命令端口返回的字符串
+ * 例如 “227 Entering Passive Mode (182,18,8,37,10,25).”
+ * 中获取数据端口
+ * */
 int Client::getPortNum()
 {
     int num1=0,num2=0;
@@ -336,6 +350,50 @@ int Client::getPortNum()
     std::cout<<"The data port number is "<<num1*256+num2<<std::endl;
     return num1*256+num2;
 }
+void Client::getDownloadedLength(string fileName){
+    downloadedFileLength = 0;
+    ifstream ifile;
+    ifile.open(fileName,ios::binary);
+    if(ifile){
+        ifile.seekg(0,ifile.end);
+        int length = ifile.tellg();
+        downloadedFileLength = length>0?length:0;
+        ifile.close();
+    }
+
+}
+int Client::getFileSize(string fname) {
+    executeCmd("SIZE " + fname);
+    recvControl(213);
+    char* p = buf;
+    while(p != nullptr && *p != ' ') {
+        p++;
+    }
+    p++;
+    int num = 0;
+    while(p != nullptr && *p != '\r') {
+        num *= 10;
+        num += (*p - '0');
+        p++;
+    }
+    memset(buf, 0, BUFLEN);
+    //cout << num << " is here";
+    return num;
+
+}
+
+int Client::getRemoteFileSize(std::string fname){
+    executeCmd("SIZE "+ fname);
+    int infolen = recv(controlSocket, buf, BUFLEN, 0); //获取命令返回结果，并存储到buf中
+    buf[infolen] = '\0';
+    if(getStateCode() != 213) {
+        //文件不存在
+        return 0;
+    }else {
+        return getFileSize(fname);
+    }
+}
+
 void Client::updateRemotePath(){
     executeCmd("PWD");
     recvControl(257);
@@ -401,8 +459,6 @@ int Client::intoPasv() {
     //切换到被动模式
     executeCmd("PASV");
     recvControl(227);
-    //executeFTPCmd(227, "PASV");                //227
-
     //返回的信息格式为---h1,h2,h3,h4,p1,p2
     //其中h1,h2,h3,h4为服务器的地址，p1*256+p2为数据端口
     dataPort=getPortNum();
@@ -419,27 +475,6 @@ int Client::intoPasv() {
     return 0;
 }
 
-int Client::getFileSize(string fname) {
-    executeCmd("SIZE " + fname);
-    recvControl(213);
-    char* p = buf;
-    while(p != nullptr && *p != ' ') {
-        p++;
-    }
-    p++;
-    int num = 0;
-    while(p != nullptr && *p != '\r') {
-        num *= 10;
-        num += (*p - '0');
-        p++;
-    }
-    memset(buf, 0, BUFLEN);
-    //cout << num << " is here";
-    return num;
-
-}
-
-
 void Client::removeSpace(string & src) {
     //空白符只保留一个
     int p, q;
@@ -451,32 +486,4 @@ void Client::removeSpace(string & src) {
     }
 }
 
-int Client::deleteFile(string fname) {
-    executeCmd("DELE "+fname);
-    recvControl(250);
-    listPwd();
-    return 0;
-}
 
-int Client::deleteDir(string dname) {
-    executeCmd("RMD "+dname);
-    recvControl(250);
-    listPwd();
-    return 0;
-}
-
-int Client::rename(string src, string dst) {
-    executeCmd("RNFR "+src);
-    recvControl(350);
-    executeCmd("RNTO "+dst);
-    recvControl(250);
-    listPwd();
-    return 0;
-}
-
-int Client::mkDir(string name) {
-    executeCmd("MKD "+name);
-    recvControl(250);
-    listPwd();
-    return 0;
-}
