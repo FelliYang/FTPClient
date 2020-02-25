@@ -34,6 +34,8 @@ private slots:
     void updateRemotePath(QString);
     void clientThreadRunning();
     void clientThreadStop();
+    void setTransferSpeedVisibility(bool);
+    void updateTransferSpeed(int speed);
 
     void on_connectButton_clicked();
     void on_downButton_clicked();

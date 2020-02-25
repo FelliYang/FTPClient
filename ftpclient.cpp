@@ -20,7 +20,8 @@ ftpClient::ftpClient(QWidget *parent) :
     connect(clientThread->curClient->infoThread,SIGNAL(emitDownloadProcess(int)),this,SLOT(updateDownloadProcess(int)));
     connect(clientThread->curClient->infoThread,SIGNAL(emitSetDownloadProcessVisibility(bool)),this,SLOT(setProcessBarVIsibility(bool)));
     connect(clientThread->curClient->infoThread,SIGNAL(emitUpdateRemotePath(QString)),this,SLOT(updateRemotePath(QString)));
-
+    connect(clientThread->curClient->infoThread,SIGNAL(emitSetTransferSpeedVisibility(bool)),this,SLOT(setTransferSpeedVisibility(bool)));
+    connect(clientThread->curClient->infoThread,SIGNAL(emitTransferSpeed(int)),this,SLOT(updateTransferSpeed(int)));
     //若执行此行，run结束后clientThread会调用析构
     //connect(clientThread, SIGNAL(finished()), clientThread, SLOT(deleteLater()));
 
@@ -35,7 +36,8 @@ ftpClient::ftpClient(QWidget *parent) :
     //设置状态栏
     ui->status->setText("ready");
     ui->status->setVisible(false);
-
+    //设置传输速度
+    ui->transferSpeed->setVisible(false);
 
     // FramelessWindowHint属性设置窗口去除边框;
     // WindowMinimizeButtonHint 属性设置在窗口最小化时，点击任务栏窗口可以显示出原窗口;
@@ -80,14 +82,7 @@ void ftpClient::on_connectButton_clicked()
 void ftpClient::updateRemotePath(QString remotePath){
     ui->remotePath->setText(remotePath);
 }
-/**
- * @brief ftpClient::setProcessBarVIsibility
- * @param b
- * 设置是否显示下载进度条
- */
-void ftpClient::setProcessBarVIsibility(bool b){
-    ui->downloadProgress->setVisible(b);
-}
+
 void ftpClient::on_downButton_clicked()
 {
     if(connected) {
@@ -259,8 +254,22 @@ void ftpClient::on_remoteFileTree_itemDoubleClicked(QTreeWidgetItem *item, int c
     }
 
 }
+/* 设置是否显示进度条
+   */
+void ftpClient::setProcessBarVIsibility(bool b){
+    ui->downloadProgress->setVisible(b);
+}
 void ftpClient::updateDownloadProcess(int process){
     ui->downloadProgress->setValue(process);
+}
+/* 设置是否显示传输速度
+ * */
+void ftpClient::setTransferSpeedVisibility(bool b){
+    ui->transferSpeed->setVisible(b);
+}
+void ftpClient::updateTransferSpeed(int speed){
+    std::string speedstr = "传输速度 "+std::to_string(speed).append("kB/s");
+    ui->transferSpeed->setText(speedstr.c_str());
 }
 void ftpClient::recvListItem(QString type, QString size,QString time, QString name) {
     QTreeWidgetItem* item = new QTreeWidgetItem(ui->remoteFileTree);

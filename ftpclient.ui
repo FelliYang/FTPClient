@@ -773,6 +773,13 @@ QLineEdit{
                </property>
               </spacer>
              </item>
+             <item>
+              <widget class="QLabel" name="transferSpeed">
+               <property name="text">
+                <string>TextLabel</string>
+               </property>
+              </widget>
+             </item>
             </layout>
            </widget>
           </item>

@@ -17,12 +17,17 @@ public:
     void hideProcessBar();
     void showProcessBar();
     void updateRemotePath(std::string);
+    void updateTransferSpeed(int speed);
+    void hideTransferSpeed();
+    void showTransferSpeed();
 
 signals:
     void emitInfo(QString);
     void emitDownloadProcess(int);
     void emitSetDownloadProcessVisibility(bool);
     void emitUpdateRemotePath(QString);
+    void emitTransferSpeed(int);
+    void emitSetTransferSpeedVisibility(bool);
 };
 
 #endif // INFOTHREAD_H

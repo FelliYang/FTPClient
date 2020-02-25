@@ -117,6 +117,12 @@ int Client::downFile(string remoteName, string localDir){
         executeCmd("RETR "+remoteName);
         if(recvControl(150)!=0) return -1; //下载命令出现错误,返回-1，结束执行
         memset(databuf, 0, DATABUFLEN);
+
+        int lastTime = QTime::currentTime().msecsSinceStartOfDay(); //初始化下载的时间，用于计算下载的网速
+        int nowTime;
+        int downloadedThisTime;
+        infoThread->updateTransferSpeed(0); //显示下载速度
+        infoThread->showTransferSpeed();
         int ret = recv(dataSocket, databuf, DATABUFLEN, 0); int count=0;
         while(ret>0) //每次从dataSocket中取出来ret个字节放到DATA缓冲里面
         {
@@ -126,17 +132,24 @@ int Client::downFile(string remoteName, string localDir){
                 recvControl(426);
                 ofile.close();
                 infoThread->hideProcessBar();
+                infoThread->hideTransferSpeed();
                 disconnect();
                 return -1;
             }
             ofile.write(databuf, ret);
             ret = recv(dataSocket, databuf, DATABUFLEN, 0);
             downloadedFileLength += ret;
+            downloadedThisTime += ret;
             count ++;
             if(count == 50){
+                nowTime = QTime::currentTime().msecsSinceStartOfDay();
                 infoThread->updateDownloadProcess(downloadedFileLength * 100/remoteFileSize);
+                infoThread->updateTransferSpeed(downloadedThisTime / (nowTime - lastTime)); //因为是毫秒为单位，所以byte不用除1k
                 count = 0;
+                downloadedThisTime = 0;
+                lastTime = nowTime;
             }
+
         }
         ofile.close();
         infoThread->sendInfo(remoteName+" has been downloaded.\n");
@@ -144,6 +157,7 @@ int Client::downFile(string remoteName, string localDir){
         closesocket(dataSocket);
         recvControl(226);
         infoThread->hideProcessBar();//下载完成后关闭下载进度条s
+        infoThread->hideTransferSpeed();
         return 0;
     }
 }
@@ -169,7 +183,13 @@ int Client::upFile(string localName) { //暂时无法断点续传 无法上传�
         ifile.seekg(remoteFileLength); //本地文件移动指针
         int count=0;
         infoThread->updateDownloadProcess(remoteFileLength * 100 / targetLength);
-        infoThread->showProcessBar(); //显示精度条
+        infoThread->showProcessBar(); //显示进度条
+        int lastTime = QTime::currentTime().msecsSinceStartOfDay(); //初始化下载的时间，用于计算下载的网速
+        int nowTime;
+        int downloadedThisTime;
+        infoThread->updateTransferSpeed(0); //显示下载速度
+        infoThread->showTransferSpeed();
+        int uploadThisTime=0;
         while(!ifile.eof())
         {
             if(!isRuningTask()) {
@@ -178,6 +198,7 @@ int Client::upFile(string localName) { //暂时无法断点续传 无法上传�
                 recvControl(426);
                 ifile.close();
                 infoThread->hideProcessBar();
+                infoThread->hideTransferSpeed();
                 disconnect();
                 return -1;
             }
@@ -185,9 +206,14 @@ int Client::upFile(string localName) { //暂时无法断点续传 无法上传�
             int readLength = ifile.gcount(); //成功读出的数据
             send(dataSocket, databuf, readLength, 0);
             remoteFileLength += readLength; //更新上传进度条
-            if(count == 50){
+            uploadThisTime += readLength; //计算上传速度
+            if(count == 1000){
+                nowTime = QTime::currentTime().msecsSinceStartOfDay();
                 infoThread->updateDownloadProcess(remoteFileLength * 100 /targetLength );
+                infoThread->updateTransferSpeed(uploadThisTime / (nowTime - lastTime)); //因为是毫秒为单位，所以byte不用除1k
                 count = 0;
+                uploadThisTime = 0;
+                lastTime = nowTime;
             }
             count ++;
 
@@ -195,6 +221,7 @@ int Client::upFile(string localName) { //暂时无法断点续传 无法上传�
 
         ifile.close();
         infoThread->hideProcessBar(); //隐藏进度条
+        infoThread->hideTransferSpeed();
         closesocket(dataSocket);
         recvControl(226);
         listPwd();

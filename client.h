@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <WinSock2.h>
 #include "infothread.h"
+#include <QTime>
 
 const int PORT = 21;
 const int BUFLEN = 1000;
@@ -39,6 +40,7 @@ private:
     int flag=-1; //用于标识是否关闭了全部socket并调用WSACleanup 取值为0则表示成功关闭了，否则没有关闭
     long long int downloadedFileLength=0;
     bool execute; //表示当前是否在执行任务的状态
+
 public:
     Client();
     ~Client();

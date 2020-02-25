@@ -20,3 +20,12 @@ void InfoThread::showProcessBar(){
 void InfoThread::updateRemotePath(std::string path){
     emit emitUpdateRemotePath(QString::fromStdString(path));
 }
+void InfoThread::updateTransferSpeed(int speed){
+    emit emitTransferSpeed(speed);
+}
+void InfoThread::hideTransferSpeed(){
+    emit emitSetTransferSpeedVisibility(false);
+}
+void InfoThread::showTransferSpeed(){
+    emit emitSetTransferSpeedVisibility(true);
+}
