@@ -61,7 +61,6 @@ int Client::connectServer() {
     cout<<"Control Socket connecting is success."<<endl;
     //接收返回状态信息
     recvControl(220);
-
     //输入用户名
     executeCmd("USER " + username);
     recvControl(331);
@@ -75,7 +74,7 @@ int Client::connectServer() {
 int Client::disconnect() {
     executeCmd("QUIT");
     recvControl(221);
-    ip_addr="", username="", password="", INFO= "";
+    ip_addr="", username="", password="", INFO= "",stateCodeHasReturned = false;
     filelist.clear(); //filelist是个什么东西
     memset(buf, 0, BUFLEN);
     memset(databuf, 0, DATABUFLEN);
@@ -112,12 +111,11 @@ int Client::downFile(string remoteName, string localDir){
         recvControl(200);
         executeCmd("REST "+to_string(downloadedFileLength));
         recvControl(350);
-        infoThread->updateDownloadProcess(downloadedFileLength * 100/remoteFileSize);
-        infoThread->showProcessBar(); //显示下载进度
         executeCmd("RETR "+remoteName);
         if(recvControl(150)!=0) return -1; //下载命令出现错误,返回-1，结束执行
         memset(databuf, 0, DATABUFLEN);
-
+        infoThread->updateDownloadProcess(downloadedFileLength * 100/remoteFileSize);
+        infoThread->showProcessBar(); //显示下载进度
         int lastTime = QTime::currentTime().msecsSinceStartOfDay(); //初始化下载的时间，用于计算下载的网速
         int nowTime;
         int downloadedThisTime;
@@ -271,52 +269,51 @@ int Client::executeCmd(string cmd) {
     return 0;
 }
 
-// TODO:This function needs to be modified so that
-// long information could be received.
 int Client::recvControl(int stateCode, string errorInfo) {
     //errorInfo 是有默认值的参数，在函数原型中定义
-    //某些命令服务器可能会发送两个回应 例如150 ...\r\n226 ...\r\n 这个时候，为了避免下一个recv阻塞
-    //添加了nextInfo，表示是否有第二条信息
-    //这种情况不常见，但是我在一次debug的时候，确实遇到了，是LIST -al指令的返回码
-    if(nextInfo.size()==0) {
-        int t;
-        Sleep(50);
-        memset(buf, 0, BUFLEN);
-        recvInfo.clear();
-        int infolen = recv(controlSocket, buf, BUFLEN, 0);
-        if(infolen==BUFLEN) {
-            cout << "ERROR! Too long information too receive!" << endl;
-            infoThread->sendInfo("ERROR! Too long information too receive!\n");
-            return -1;
-        }
-        buf[infolen] = '\0';
-        t = getStateCode();
-        recvInfo = buf;
-        cout << recvInfo << endl;
+    //LIST -al 指令在返回150状态码后，还需要返回226状态码
+    //该状态码的返回时间，不同的ftp服务器有不同实现房里 例如vsftpd中，等到所有数据(目录)传输完成后，再返回226
+    //而在pure-ftpd中，会和150状态码同时返回，不等数据传输完成。
+    //为了保证后面的指令执行正确，客户端必须正确接收226状态码，为此，当目录数据传输完成后，检测一次是否有226状态码
+    //但是有可能226已经返回了，这种情况下就会阻塞，所以，设立stateCodeHasReturned来标志这种情况
+        //如果是LIST -al 指令
+        if(!stateCodeHasReturned) {
+            int t;
+            Sleep(50);
+            memset(buf, 0, BUFLEN);
+            recvInfo.clear();
+            int infolen = recv(controlSocket, buf, BUFLEN, 0);
+            if(infolen==BUFLEN) {
+                cout << "ERROR! Too long information too receive!" << endl;
+                infoThread->sendInfo("ERROR! Too long information too receive!\n");
+                return -1;
+            }
+            buf[infolen] = '\0';
+            t = getStateCode();
+            recvInfo = buf;
+            cout << recvInfo << endl;
 
-        // JUNK
-        int f1 = recvInfo.find("\r\n"); //list -al 命令的相应可能有两段， 150 和 226 第一段一定是150
-        int f2 = recvInfo.rfind("\r\n"); //是否有第二个回应结果 226
-        if(f1!=f2) {
-            nextInfo = recvInfo.substr(f1+2);
-            cout << "find a junk!" ; //其实这个junk表示，list -al 的回应代码一下发送了两个回应结果
-        }
+            if(stateCode==150){
+                size_t f1 = recvInfo.find("226");
+                if(f1!=string::npos) {
+                    stateCodeHasReturned = true;
+                    cout << "find a junk!" ; //list -al 的回应代码一下发送了两个回应结果
+                }
+            }
+            infoThread->sendInfo(recvInfo); //直接把recvInfo不加处理地发送了
+            if(t == stateCode)
+                return 0;
+            else {
+                cout << "\nerror with this command! check your permission!\n" << endl;
+                infoThread->sendInfo(errorInfo);
+                return -1;
+            }
 
-        infoThread->sendInfo(recvInfo); //直接把recvInfo不加处理地发送了
-        if(t == stateCode)
-            return 0;
+        }
         else {
-            cout << "\nerror with this command! check your permission!\n" << endl;
-            infoThread->sendInfo(errorInfo);
-            return -1;
+            stateCodeHasReturned = false;
+            return 0;
         }
-
-    }
-    else {
-        recvInfo = nextInfo;
-        nextInfo.clear();
-        return 0;
-    }
 
 
 }

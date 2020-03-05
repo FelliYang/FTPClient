@@ -36,7 +36,7 @@ private:
     SOCKET controlSocket;
     SOCKET dataSocket;
     std::string recvInfo;
-    std::string nextInfo; //JUNK
+    bool stateCodeHasReturned=false; //LIST -al 指令使用的特殊标志
     int flag=-1; //用于标识是否关闭了全部socket并调用WSACleanup 取值为0则表示成功关闭了，否则没有关闭
     long long int downloadedFileLength=0;
     bool execute; //表示当前是否在执行任务的状态
